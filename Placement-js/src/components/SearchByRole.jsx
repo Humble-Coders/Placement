@@ -1,5 +1,12 @@
 import { useState, useMemo } from "react";
-import { Search, BookOpen, ArrowLeft } from "lucide-react";
+import { Search, BookOpen, ArrowLeft, Briefcase } from "lucide-react";
+
+function hiringLabel(status) {
+  if (status === "I") return "Internship";
+  if (status === "FT") return "Full Time";
+  if (status === "I+FT") return "Internship + Full Time";
+  return null;
+}
 import { Input } from "./ui/input";
 import ResultCard from "./ResultCard";
 import QuestionDetail from "./QuestionDetail";
@@ -53,7 +60,7 @@ export default function SearchByRole({ data }) {
                 subtitle={doc.role_name}
                 meta={[
                   { icon: <BookOpen className="h-3 w-3" />, label: `${(doc.technical_questions?.length ?? 0) + (doc.hr_questions?.length ?? 0)} questions` },
-                  { label: `${doc.response_count ?? 0} responses` },
+                  ...(hiringLabel(doc.hiring_status) ? [{ icon: <Briefcase className="h-3 w-3" />, label: hiringLabel(doc.hiring_status) }] : []),
                 ]}
                 tags={doc.topics?.slice(0, 5)}
                 onClick={() => setActiveDoc(doc)}

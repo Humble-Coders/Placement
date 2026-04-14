@@ -40,10 +40,12 @@ export function getQuestionsByRole(questions, roleId) {
 }
 
 export function getQuestionsByBranch(questions, branchName) {
-  return questions.filter((q) =>
-    Array.isArray(q.branches) &&
-    q.branches.some((b) => b.toLowerCase() === branchName.toLowerCase())
-  );
+  const lower = branchName.toLowerCase();
+  return questions.filter((q) => {
+    const inBranches = Array.isArray(q.branches) && q.branches.some((b) => b.toLowerCase() === lower);
+    const inOfficialBranches = Array.isArray(q.official_branches) && q.official_branches.some((b) => b.toLowerCase() === lower);
+    return inBranches || inOfficialBranches;
+  });
 }
 
 export function getCompaniesByBranch(questions, companies, branchName) {

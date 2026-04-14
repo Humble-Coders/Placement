@@ -1,5 +1,12 @@
 import { useState, useMemo } from "react";
-import { Search, BookOpen, ArrowLeft } from "lucide-react";
+import { Search, BookOpen, ArrowLeft, Briefcase } from "lucide-react";
+
+function hiringLabel(status) {
+  if (status === "I") return "Internship";
+  if (status === "FT") return "Full Time";
+  if (status === "I+FT") return "Internship + Full Time";
+  return null;
+}
 import { Input } from "./ui/input";
 import ResultCard from "./ResultCard";
 import QuestionDetail from "./QuestionDetail";
@@ -50,12 +57,12 @@ export default function SearchByCompany({ data }) {
               <ResultCard
                 key={doc.id}
                 title={doc.role_name}
-                subtitle={`${doc.role_labels?.length ?? 0} specific roles reported`}
+                subtitle={`${(doc.official_roles?.length > 0 ? doc.official_roles : doc.role_labels)?.length ?? 0} specific roles reported`}
                 meta={[
                   { icon: <BookOpen className="h-3 w-3" />, label: `${(doc.technical_questions?.length ?? 0) + (doc.hr_questions?.length ?? 0)} questions` },
-                  { label: `${doc.response_count ?? 0} responses` },
+                  ...(hiringLabel(doc.hiring_status) ? [{ icon: <Briefcase className="h-3 w-3" />, label: hiringLabel(doc.hiring_status) }] : []),
                 ]}
-                tags={doc.role_labels}
+                tags={doc.official_roles?.length > 0 ? doc.official_roles : doc.role_labels}
                 onClick={() => setActiveDoc(doc)}
               />
             ))

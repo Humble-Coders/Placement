@@ -1,0 +1,84 @@
+[debug] [2026-04-14T13:14:40.236Z] ----------------------------------------------------------------------
+[debug] [2026-04-14T13:14:40.237Z] Command:       /opt/homebrew/Cellar/node/25.8.2/bin/node /opt/homebrew/bin/firebase init functions
+[debug] [2026-04-14T13:14:40.237Z] CLI Version:   15.12.0
+[debug] [2026-04-14T13:14:40.238Z] Platform:      darwin
+[debug] [2026-04-14T13:14:40.238Z] Node Version:  v25.8.2
+[debug] [2026-04-14T13:14:40.238Z] Time:          Tue Apr 14 2026 18:44:40 GMT+0530 (India Standard Time)
+[debug] [2026-04-14T13:14:40.238Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  /Users/ishank/Desktop/Placement
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-04-14T13:14:47.072Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-04-14T13:14:47.073Z] > authorizing via signed-in user (humblesolutions2025@gmail.com)
+[debug] [2026-04-14T13:14:47.076Z] Checked if tokens are valid: true, expires at: 1776176071673
+[debug] [2026-04-14T13:14:47.076Z] Checked if tokens are valid: true, expires at: 1776176071673
+[debug] [2026-04-14T13:14:47.080Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects pageSize=100
+[debug] [2026-04-14T13:14:47.995Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects 200
+[debug] [2026-04-14T13:14:47.996Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects [omitted]
+[info] 
+=== Functions Setup
+[debug] [2026-04-14T13:14:53.010Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-04-14T13:14:53.011Z] > authorizing via signed-in user (humblesolutions2025@gmail.com)
+[debug] [2026-04-14T13:14:53.011Z] [iam] checking project placementdata-b3db7 for permissions ["firebase.projects.get"]
+[debug] [2026-04-14T13:14:53.011Z] Checked if tokens are valid: true, expires at: 1776176071673
+[debug] [2026-04-14T13:14:53.011Z] Checked if tokens are valid: true, expires at: 1776176071673
+[debug] [2026-04-14T13:14:53.012Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/placementdata-b3db7:testIamPermissions [none]
+[debug] [2026-04-14T13:14:53.012Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/placementdata-b3db7:testIamPermissions  x-goog-user-project=placementdata-b3db7
+[debug] [2026-04-14T13:14:53.012Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/placementdata-b3db7:testIamPermissions {"permissions":["firebase.projects.get"]}
+[debug] [2026-04-14T13:14:54.545Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/placementdata-b3db7:testIamPermissions 200
+[debug] [2026-04-14T13:14:54.545Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/placementdata-b3db7:testIamPermissions {"permissions":["firebase.projects.get"]}
+[debug] [2026-04-14T13:14:54.546Z] Checked if tokens are valid: true, expires at: 1776176071673
+[debug] [2026-04-14T13:14:54.547Z] Checked if tokens are valid: true, expires at: 1776176071673
+[debug] [2026-04-14T13:14:54.548Z] Checked if tokens are valid: true, expires at: 1776176071673
+[debug] [2026-04-14T13:14:54.548Z] Checked if tokens are valid: true, expires at: 1776176071673
+[debug] [2026-04-14T13:14:54.549Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/cloudfunctions.googleapis.com [none]
+[debug] [2026-04-14T13:14:54.549Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/cloudfunctions.googleapis.com  x-goog-user-project=placementdata-b3db7
+[debug] [2026-04-14T13:14:54.554Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/runtimeconfig.googleapis.com [none]
+[debug] [2026-04-14T13:14:54.554Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/runtimeconfig.googleapis.com  x-goog-user-project=placementdata-b3db7
+[debug] [2026-04-14T13:14:56.367Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/runtimeconfig.googleapis.com 200
+[debug] [2026-04-14T13:14:56.368Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/runtimeconfig.googleapis.com [omitted]
+[debug] [2026-04-14T13:14:56.411Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/cloudfunctions.googleapis.com 200
+[debug] [2026-04-14T13:14:56.411Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/cloudfunctions.googleapis.com [omitted]
+[debug] [2026-04-14T13:14:56.413Z] Checked if tokens are valid: true, expires at: 1776176071673
+[debug] [2026-04-14T13:14:56.413Z] Checked if tokens are valid: true, expires at: 1776176071673
+[debug] [2026-04-14T13:14:56.413Z] >>> [apiv2][query] POST https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/cloudfunctions.googleapis.com:enable [none]
+[debug] [2026-04-14T13:14:56.413Z] >>> [apiv2][(partial)header] POST https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/cloudfunctions.googleapis.com:enable  x-goog-user-project=placementdata-b3db7
+[debug] [2026-04-14T13:14:58.584Z] <<< [apiv2][status] POST https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/cloudfunctions.googleapis.com:enable 200
+[debug] [2026-04-14T13:14:58.585Z] <<< [apiv2][body] POST https://serviceusage.googleapis.com/v1/projects/placementdata-b3db7/services/cloudfunctions.googleapis.com:enable [omitted]
+[info] Let's create a new codebase for your functions.
+[info] A directory corresponding to the codebase will be created in your project
+[info] with sample code pre-configured.
+
+[info] See https://firebase.google.com/docs/functions/organize-functions for
+[info] more information on organizing your functions using codebases.
+
+[info] Functions can be deployed with firebase deploy.
+
+[debug] [2026-04-14T13:16:52.211Z] ExitPromptError: User force closed the prompt with SIGINT
+    at Interface.sigint (/opt/homebrew/lib/node_modules/firebase-tools/node_modules/@inquirer/core/dist/commonjs/lib/create-prompt.js:101:37)
+    at Interface.emit (node:events:508:20)
+    at [_ttyWrite] [as _ttyWrite] (node:internal/readline/interface:1327:18)
+    at ReadStream.onkeypress (node:internal/readline/interface:284:20)
+    at ReadStream.emit (node:events:520:22)
+    at emitKeys (node:internal/readline/utils:371:14)
+    at emitKeys.next (<anonymous>)
+    at ReadStream.onData (node:internal/readline/emitKeypressEvents:64:36)
+    at ReadStream.emit (node:events:508:20)
+    at addChunk (node:internal/streams/readable:564:12)
+[error] 
+[error] Error: An unexpected error has occurred.

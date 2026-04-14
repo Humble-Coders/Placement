@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Building2, Briefcase, GraduationCap, AlertCircle, BookOpen, LogOut, Loader2, PenLine } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../context/AuthContext";
+import { useUsageTracker } from "../hooks/useUsageTracker";
 import SearchByCompany from "../components/SearchByCompany";
 import SearchByRole from "../components/SearchByRole";
 import SearchByBranch from "../components/SearchByBranch";
@@ -44,9 +45,12 @@ function ErrorScreen({ message }) {
 
 export default function Home() {
   const { data, loading, error } = useData();
-  const { user, signOut } = useAuth();
+  const { user, role, signOut } = useAuth();
   const [tab, setTab] = useState("company");
   const [signingOut, setSigningOut] = useState(false);
+
+  // Start usage tracking — measures active visible time, flushes on tab switch / unload
+  useUsageTracker(user, role);
 
   const handleSignOut = async () => {
     setSigningOut(true);

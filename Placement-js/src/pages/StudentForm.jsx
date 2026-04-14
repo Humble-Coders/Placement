@@ -14,7 +14,7 @@ import {
   getDocs,
   doc,
   getDoc,
-  addDoc,
+  runTransaction,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
@@ -218,6 +218,7 @@ export default function StudentForm() {
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Load dropdown options
   useEffect(() => {
@@ -307,41 +308,138 @@ export default function StudentForm() {
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
-      // Scroll to first error
       const firstKey = Object.keys(errs)[0];
       document.getElementById(`field-${firstKey}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
     setSubmitting(true);
-    try {
-      const selectedCompany = companies.find((c) => c.id === companyId);
-      const selectedRole = roles.find((r) => r.id === roleId);
-      const selectedBranch = branches.find((b) => b.id === branch);
+    setRetryCount(0);
+    setErrors({});
 
-      await addDoc(collection(db, "raw_responses"), {
-        email: email.trim().toLowerCase(),
-        name: name.trim(),
-        roll: roll.trim(),
-        branch: selectedBranch?.name ?? branch,
-        company_id: companyId,
-        company_name: selectedCompany?.name ?? "",
-        role_id: roleId,
-        role_name: selectedRole?.name ?? "",
-        technical_questions: techQuestions.map((q) => q.trim()).filter(Boolean),
-        hr_questions: hrQuestions.map((q) => q.trim()).filter(Boolean),
-        topics,
-        status: "unprocessed",
-        submittedAt: serverTimestamp(),
-      });
+    const emailLower       = email.trim().toLowerCase();
+    const selectedCompany  = companies.find((c) => c.id === companyId);
+    const selectedRole     = roles.find((r) => r.id === roleId);
+    const selectedBranch   = branches.find((b) => b.id === branch);
+
+    // Deterministic lock key: prevents duplicate submissions for the same
+    // email + company + role within 24 hours.
+    const lockId   = `${sanitizeEmail(emailLower)}_${companyId}_${roleId}`;
+    const lockRef  = doc(db, "submissionLocks", lockId);
+
+    // Pre-generate the response document reference so we can use it
+    // inside the transaction (addDoc cannot be used in a transaction).
+    const responseRef = doc(collection(db, "raw_responses"));
+
+    const payload = {
+      email:               emailLower,
+      name:                name.trim(),
+      roll:                roll.trim(),
+      branch:              selectedBranch?.name ?? branch,
+      company_id:          companyId,
+      company_name:        selectedCompany?.name ?? "",
+      role_id:             roleId,
+      role_name:           selectedRole?.name ?? "",
+      technical_questions: techQuestions.map((q) => q.trim()).filter(Boolean),
+      hr_questions:        hrQuestions.map((q) => q.trim()).filter(Boolean),
+      topics:              [...new Set(topics)],
+      status:              "unprocessed",
+      submittedAt:         serverTimestamp(),
+    };
+
+    const MAX_RETRIES = 3;
+    let succeeded  = false;
+    let lastError  = null;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 1) setRetryCount(attempt - 1);
+
+      try {
+        await runTransaction(db, async (txn) => {
+          // ── Read: check for recent duplicate ───────────────────────────
+          const lockSnap = await txn.get(lockRef);
+
+          if (lockSnap.exists()) {
+            const prevTs = lockSnap.data().submittedAt?.toDate?.();
+            if (prevTs) {
+              const hoursElapsed = (Date.now() - prevTs.getTime()) / 3_600_000;
+              if (hoursElapsed < 24) {
+                const dup = new Error(
+                  `You already submitted for ${selectedCompany?.name ?? "this company"} ` +
+                  `(${selectedRole?.name ?? "this role"}) ${Math.round(hoursElapsed)}h ago. ` +
+                  `Please wait 24 hours before resubmitting.`
+                );
+                dup.isDuplicate = true;
+                throw dup;
+              }
+            }
+          }
+
+          // ── Write 1: save the response ──────────────────────────────────
+          txn.set(responseRef, payload);
+
+          // ── Write 2: update the dedup lock ──────────────────────────────
+          txn.set(lockRef, {
+            email:      emailLower,
+            companyId,
+            roleId,
+            responseId: responseRef.id,
+            submittedAt: serverTimestamp(),
+          });
+        });
+
+        succeeded = true;
+        break;
+
+      } catch (err) {
+        lastError = err;
+
+        // Non-retryable: our business logic errors + auth/permission issues
+        if (err.isDuplicate || err.code === "permission-denied" || err.code === "invalid-argument") {
+          break;
+        }
+
+        // Retryable: transaction contention, transient network, timeout
+        const isRetryable = err.code === "aborted"
+          || err.code === "unavailable"
+          || err.code === "deadline-exceeded";
+
+        if (isRetryable && attempt < MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, 800 * attempt)); // 800 ms, 1600 ms
+          continue;
+        }
+
+        break;
+      }
+    }
+
+    setSubmitting(false);
+    setRetryCount(0);
+
+    if (succeeded) {
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err) {
-      setErrors({ submit: "Submission failed: " + err.message });
-    } finally {
-      setSubmitting(false);
+    } else {
+      setErrors({ submit: friendlySubmitError(lastError) });
     }
   };
+
+  function friendlySubmitError(err) {
+    if (!err) return "Something went wrong. Please try again.";
+    if (err.isDuplicate) return err.message;
+    const map = {
+      "permission-denied":  "Submission not permitted. Make sure you are using your @thapar.edu email.",
+      "unavailable":        "Network unavailable. Please check your internet connection and try again.",
+      "deadline-exceeded":  "Request timed out. Please check your connection and try again.",
+      "resource-exhausted": "Too many requests right now. Please wait a moment and try again.",
+      "aborted":            "Submission conflict — too many simultaneous requests. Please try again.",
+      "invalid-argument":   "Form data is invalid. Please review your answers and try again.",
+      "not-found":          "A required resource was not found. Please refresh the page and try again.",
+      "internal":           "A server error occurred. Please try again in a moment.",
+      "cancelled":          "Submission was cancelled. Please try again.",
+    };
+    return map[err.code] ?? `Submission failed: ${err.message ?? "Unknown error."}`;
+  }
 
   const resetForm = () => {
     setEmail(""); setName(""); setRoll(""); setBranch("");
@@ -349,6 +447,7 @@ export default function StudentForm() {
     setTechQuestions(INITIAL_TECH); setHrQuestions(INITIAL_HR);
     setTopics([]); setErrors({}); setSubmitted(false);
     setProfileFound(false); setProfileChecked(false);
+    setRetryCount(0);
   };
 
   // ── Success screen ────────────────────────────────────────────────────────
@@ -637,9 +736,19 @@ export default function StudentForm() {
 
           {/* Submit error */}
           {errors.submit && (
-            <div className="flex items-start gap-2 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+            <div className="flex items-start gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3.5">
               <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-              <p className="text-sm text-red-600">{errors.submit}</p>
+              <div>
+                <p className="text-sm font-medium text-red-700">Submission failed</p>
+                <p className="text-sm text-red-600 mt-0.5">{errors.submit}</p>
+                <button
+                  type="button"
+                  onClick={() => setErrors((prev) => { const { submit: _, ...rest } = prev; return rest; })}
+                  className="mt-2 text-xs text-red-500 underline hover:text-red-700"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           )}
 
@@ -651,10 +760,16 @@ export default function StudentForm() {
             <button
               type="submit"
               disabled={submitting || loadingOptions}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-8 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed transition"
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-8 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed transition min-w-[170px] justify-center"
             >
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              Submit Experience
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {retryCount > 0 ? `Retrying… (${retryCount}/2)` : "Submitting…"}
+                </>
+              ) : (
+                "Submit Experience"
+              )}
             </button>
           </div>
         </form>

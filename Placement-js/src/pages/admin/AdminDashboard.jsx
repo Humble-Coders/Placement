@@ -5,6 +5,8 @@ import {
   Briefcase,
   Users,
   GraduationCap,
+  BarChart2,
+  Settings2,
   LogOut,
   ShieldCheck,
   Upload,
@@ -20,13 +22,17 @@ import RoleManager from "../../components/admin/RoleManager";
 import BranchManager from "../../components/admin/BranchManager";
 import StudentList from "../../components/admin/StudentList";
 import ExcelUpload from "../../components/admin/ExcelUpload";
+import StatsPanel from "../../components/admin/StatsPanel";
+import LLMConfig from "../../components/admin/LLMConfig";
 import { cn } from "../../components/ui/utils";
 
 const TABS = [
-  { id: "companies", label: "Companies", icon: Building2 },
-  { id: "roles",     label: "Roles",     icon: Briefcase },
-  { id: "branches",  label: "Branches",  icon: GraduationCap },
-  { id: "students",  label: "Students",  icon: Users },
+  { id: "companies", label: "Companies",  icon: Building2 },
+  { id: "roles",     label: "Roles",      icon: Briefcase },
+  { id: "branches",  label: "Branches",   icon: GraduationCap },
+  { id: "students",  label: "Students",   icon: Users },
+  { id: "stats",     label: "Statistics", icon: BarChart2 },
+  { id: "config",    label: "Config",     icon: Settings2 },
 ];
 
 export default function AdminDashboard() {
@@ -217,6 +223,8 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
+              {tab === "stats"  && <StatsPanel />}
+              {tab === "config" && <LLMConfig />}
             </>
           )}
         </div>

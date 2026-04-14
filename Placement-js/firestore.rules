@@ -99,6 +99,25 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── /config/{docId} ──────────────────────────────────────────────────────
+    // Admin-only configuration (LLM provider, model, API key, last-run status).
+    // The Cloud Function (Admin SDK) bypasses these rules and can always write.
+
+    match /config/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── /submissionLocks/{lockId} ────────────────────────────────────────────
+    // Dedup lock documents used by the student form transaction.
+    // lockId format: sanitizedEmail_companyId_roleId
+    // Transaction reads the lock first to detect duplicate submissions within
+    // 24 hours, then writes the response + updates the lock atomically.
+    // Must be publicly readable and writable because the form has no auth.
+
+    match /submissionLocks/{lockId} {
+      allow read, write: if true;
+    }
+
     // ── /raw_responses/{id} ──────────────────────────────────────────────────
     // Student form submissions. Anyone may create (public form, no auth required).
     // Only admins may read, update, or delete.
@@ -106,6 +125,34 @@ service cloud.firestore {
     match /raw_responses/{id} {
       allow create: if true;
       allow read, update, delete: if isAdmin();
+    }
+
+    // ── /usage/{uid} ─────────────────────────────────────────────────────────
+    // Usage summary per student. Students write their own via increment().
+    // Admins can read all summary docs (for the Stats panel leaderboard/charts).
+
+    match /usage/{uid} {
+      // Student reads own; admin reads all (needed for collection-level query)
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == uid);
+
+      // Students create/update only their OWN summary.
+      // uid field in the document must match the authenticated user.
+      allow create: if isAuthenticated()
+                    && request.auth.uid == uid
+                    && request.resource.data.uid == uid;
+
+      allow update: if isAuthenticated() && request.auth.uid == uid;
+
+      // Admin can also write (e.g. reset/correct data)
+      allow write: if isAdmin();
+
+      // ── /usage/{uid}/daily/{date} ─────────────────────────────────────────
+      // One doc per calendar day. Students write own; admins read all.
+
+      match /daily/{date} {
+        allow read:  if isAdmin() || (isAuthenticated() && request.auth.uid == uid);
+        allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == uid);
+      }
     }
 
     // Deny everything else by default.

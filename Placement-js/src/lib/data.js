@@ -3,6 +3,10 @@ import { db } from "../firebase";
 
 let _cache = null;
 
+export function clearCache() {
+  _cache = null;
+}
+
 export async function fetchAllData() {
   if (_cache) return _cache;
 

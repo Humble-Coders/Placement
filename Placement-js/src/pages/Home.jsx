@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Building2, Briefcase, GraduationCap, AlertCircle, BookOpen } from "lucide-react";
+import { Building2, Briefcase, GraduationCap, AlertCircle, BookOpen, LogOut, Loader2, PenLine } from "lucide-react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../context/AuthContext";
 import SearchByCompany from "../components/SearchByCompany";
 import SearchByRole from "../components/SearchByRole";
 import SearchByBranch from "../components/SearchByBranch";
@@ -43,7 +44,14 @@ function ErrorScreen({ message }) {
 
 export default function Home() {
   const { data, loading, error } = useData();
+  const { user, signOut } = useAuth();
   const [tab, setTab] = useState("company");
+  const [signingOut, setSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try { await signOut(); } catch { setSigningOut(false); }
+  };
 
   if (loading) return <LoadingScreen />;
   if (error)   return <ErrorScreen message={error} />;
@@ -63,7 +71,7 @@ export default function Home() {
               <span className="ml-2 hidden sm:inline text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Placement Portal</span>
             </div>
           </div>
-          <div className="flex items-center gap-5 text-sm text-slate-500">
+          <div className="flex items-center gap-4 text-sm text-slate-500">
             <div className="hidden sm:flex items-center gap-1.5">
               <span className="font-semibold text-slate-800">{data.questions.length}</span>
               <span>role buckets</span>
@@ -73,6 +81,25 @@ export default function Home() {
               <span className="font-semibold text-slate-800">{data.companies.length}</span>
               <span>companies</span>
             </div>
+            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+            <a
+              href="/form"
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition"
+            >
+              <PenLine className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Share Experience</span>
+            </a>
+            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+            <span className="hidden sm:inline text-xs text-slate-400 max-w-[160px] truncate">{user?.email}</span>
+            <button
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition"
+              title="Sign out"
+            >
+              {signingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
           </div>
         </div>
       </header>

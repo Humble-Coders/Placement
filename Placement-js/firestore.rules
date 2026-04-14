@@ -1,0 +1,116 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isThaparEmail() {
+      return isAuthenticated()
+        && request.auth.token.email.matches('.*@thapar\\.edu$');
+    }
+
+    // Reads the caller's role from /users/{uid}.
+    function callerRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isThaparEmail() && callerRole() == 'admin';
+    }
+
+    function isStudent() {
+      return isThaparEmail() && callerRole() == 'student';
+    }
+
+    function isThaparUser() {
+      return isAdmin() || isStudent();
+    }
+
+    // ── /users/{uid} ──────────────────────────────────────────────────────────
+
+    match /users/{uid} {
+      allow read: if isAuthenticated()
+                  && (request.auth.uid == uid || isAdmin());
+
+      allow create: if isAuthenticated()
+                    && request.auth.uid == uid
+                    && request.resource.data.role == 'student'
+                    && request.resource.data.email == request.auth.token.email;
+
+      // Students may only update non-sensitive fields (e.g. lastLogin).
+      // Role and email are immutable for students.
+      allow update: if isAuthenticated()
+                    && (
+                      isAdmin()
+                      || (
+                        request.auth.uid == uid
+                        && !request.resource.data.diff(resource.data)
+                              .affectedKeys().hasAny(['role', 'email'])
+                      )
+                    );
+
+      allow delete: if isAdmin();
+    }
+
+    // ── /students/{docId} ────────────────────────────────────────────────────
+    // Keyed by sanitised email. Publicly readable so the student form can
+    // auto-fill name/roll/branch when an email is entered.
+
+    match /students/{docId} {
+      // Public read so unauthenticated form can autofill by email doc lookup.
+      allow read: if true;
+
+      // Only admins write (via Excel upload).
+      allow write: if isAdmin();
+    }
+
+    // ── /companies/{id} ──────────────────────────────────────────────────────
+    // Publicly readable so the student form can populate its dropdowns.
+
+    match /companies/{id} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    // ── /roles/{id} ──────────────────────────────────────────────────────────
+
+    match /roles/{id} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    // ── /branches/{id} ───────────────────────────────────────────────────────
+
+    match /branches/{id} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    // ── /questions/{id} ──────────────────────────────────────────────────────
+    // Placement interview experiences — restricted to authenticated Thapar users.
+
+    match /questions/{id} {
+      allow read:  if isThaparUser();
+      allow write: if isAdmin();
+    }
+
+    // ── /raw_responses/{id} ──────────────────────────────────────────────────
+    // Student form submissions. Anyone may create (public form, no auth required).
+    // Only admins may read, update, or delete.
+
+    match /raw_responses/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -4,6 +4,8 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendEmailVerification,
+  reload,
   signOut as firebaseSignOut,
 } from "firebase/auth";
 import {
@@ -67,6 +69,9 @@ export function AuthProvider({ children }) {
       throw new Error("Only @thapar.edu email addresses are allowed.");
     }
     const credential = await createUserWithEmailAndPassword(auth, email, password);
+    // Send verification email before writing Firestore doc so the user
+    // cannot access the portal until they click the link.
+    await sendEmailVerification(credential.user);
     await setDoc(doc(db, "users", credential.user.uid), {
       email: email.toLowerCase(),
       role: "student",
@@ -76,13 +81,28 @@ export function AuthProvider({ children }) {
     return credential;
   };
 
+  // Re-send the verification email to the currently signed-in user.
+  const resendVerification = async () => {
+    if (!auth?.currentUser) throw new Error("No signed-in user.");
+    await sendEmailVerification(auth.currentUser);
+  };
+
+  // Force-refresh the Firebase Auth token so emailVerified is up to date,
+  // then re-trigger onAuthStateChanged by reloading the user object.
+  const reloadUser = async () => {
+    if (!auth?.currentUser) return;
+    await reload(auth.currentUser);
+    // Manually push the refreshed user so React re-renders immediately.
+    setUser({ ...auth.currentUser });
+  };
+
   const signOut = () => {
     if (!auth) return Promise.resolve();
     return firebaseSignOut(auth);
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, role, loading, signIn, signUp, signOut, resendVerification, reloadUser }}>
       {children}
     </AuthContext.Provider>
   );

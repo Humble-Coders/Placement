@@ -4,6 +4,7 @@ import AuthPage from "./pages/AuthPage";
 import Home from "./pages/Home";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import StudentForm from "./pages/StudentForm";
+import EmailVerificationPage from "./pages/EmailVerificationPage";
 import { BookOpen } from "lucide-react";
 
 function FullPageSpinner() {
@@ -31,6 +32,8 @@ function AppRoutes() {
 
   if (loading) return <FullPageSpinner />;
   if (!user) return <AuthPage />;
+  // Admins are trusted accounts created manually — skip verification gate.
+  if (!user.emailVerified && role !== "admin") return <EmailVerificationPage />;
   if (role === "admin") return <AdminDashboard />;
   return <Home />;
 }

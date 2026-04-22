@@ -2,18 +2,15 @@ import { useEffect, useState, useCallback } from "react";
 import {
   collection,
   getDocs,
-  orderBy,
-  query,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import {
   PieChart, Pie, Cell, Tooltip as ReTooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
-  AreaChart, Area,
 } from "recharts";
 import {
   Users, Clock, TrendingUp, Activity, RefreshCw,
-  Loader2, AlertCircle, ChevronDown, ChevronUp, GraduationCap,
+  Loader2, AlertCircle, GraduationCap,
 } from "lucide-react";
 import { cn } from "../ui/utils";
 
@@ -24,8 +21,6 @@ const PALETTE = [
   "#8b5cf6", "#ec4899", "#14b8a6", "#f97316",
   "#84cc16", "#6366f1", "#0ea5e9", "#d946ef",
 ];
-
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,20 +42,6 @@ function fmtDate(ts) {
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
-}
-
-function getLast30Days() {
-  return Array.from({ length: 30 }, (_, i) => {
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() - (29 - i));
-    return d.toISOString().slice(0, 10);
-  });
-}
-
-function formatDayLabel(isoDate) {
-  // "YYYY-MM-DD" → "Apr 26"
-  const [, mm, dd] = isoDate.split("-");
-  return `${MONTHS[parseInt(mm) - 1]} ${parseInt(dd)}`;
 }
 
 function isActiveToday(ts) {
@@ -127,79 +108,6 @@ function PieTooltipContent({ active, payload }) {
   );
 }
 
-// Student daily chart (loaded on demand)
-function StudentDailyChart({ uid }) {
-  const [days, setDays] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const dates = getLast30Days();
-    getDocs(query(collection(db, "usage", uid, "daily"), orderBy("date", "asc")))
-      .then((snap) => {
-        const map = {};
-        snap.docs.forEach((d) => { map[d.data().date] = d.data().minutes ?? 0; });
-        setDays(dates.map((iso) => ({
-          label: formatDayLabel(iso),
-          minutes: map[iso] ?? 0,
-        })));
-      })
-      .catch(() => setDays([]))
-      .finally(() => setLoading(false));
-  }, [uid]);
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-32 gap-2 text-slate-400">
-      <Loader2 className="h-4 w-4 animate-spin" />
-      <span className="text-xs">Loading activity…</span>
-    </div>
-  );
-
-  const hasData = days?.some((d) => d.minutes > 0);
-  if (!hasData) return (
-    <p className="text-xs text-center text-slate-400 py-8">No activity recorded in the last 30 days.</p>
-  );
-
-  return (
-    <ResponsiveContainer width="100%" height={160}>
-      <AreaChart data={days} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
-        <defs>
-          <linearGradient id={`grad-${uid}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-        <XAxis
-          dataKey="label"
-          tick={{ fontSize: 10, fill: "#94a3b8" }}
-          interval={4}
-          tickLine={false}
-          axisLine={false}
-        />
-        <YAxis
-          tick={{ fontSize: 10, fill: "#94a3b8" }}
-          tickLine={false}
-          axisLine={false}
-          tickFormatter={(v) => `${v}m`}
-        />
-        <ReTooltip
-          formatter={(v) => [fmtMinutes(v), "Active time"]}
-          contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }}
-        />
-        <Area
-          type="monotone"
-          dataKey="minutes"
-          stroke="#3b82f6"
-          strokeWidth={2}
-          fill={`url(#grad-${uid})`}
-          dot={false}
-          activeDot={{ r: 4 }}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  );
-}
-
 // ─── main component ───────────────────────────────────────────────────────────
 
 export default function StatsPanel() {
@@ -207,7 +115,6 @@ export default function StatsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
-  const [expandedUid, setExpandedUid] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
 
   const load = useCallback(async () => {
@@ -257,23 +164,6 @@ export default function StatsPanel() {
     students: b.count,
   }));
   const mostActiveBranch = branchAgg[0]?.branch ?? "—";
-
-  // Top 10 students (by total minutes) from filtered set
-  const topStudents = [...filtered]
-    .filter((s) => (s.totalMinutes ?? 0) > 0)
-    .sort((a, b) => (b.totalMinutes ?? 0) - (a.totalMinutes ?? 0))
-    .slice(0, 10)
-    .map((s) => ({
-      name: (s.email ?? "").split("@")[0],
-      email: s.email,
-      branch: s.branch ?? "—",
-      minutes: s.totalMinutes ?? 0,
-      uid: s.uid,
-    }));
-
-  // All students sorted for the table
-  const tableData = [...filtered]
-    .sort((a, b) => (b.totalMinutes ?? 0) - (a.totalMinutes ?? 0));
 
   // ── Loading / error ───────────────────────────────────────────────────────
   if (loading) return (
@@ -538,137 +428,6 @@ export default function StatsPanel() {
               </BarChart>
             </ResponsiveContainer>
           )}
-        </div>
-      </div>
-
-      {/* ── Top 10 leaderboard ── */}
-      {topStudents.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-1">Top Students by Active Time</h3>
-          <p className="text-xs text-slate-400 mb-5">
-            {branchFilter ? `Top 10 in ${branchFilter}` : "Top 10 across all branches"}
-          </p>
-          <ResponsiveContainer width="100%" height={Math.max(200, topStudents.length * 40)}>
-            <BarChart
-              data={topStudents}
-              layout="vertical"
-              margin={{ top: 0, right: 64, left: 8, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-              <XAxis
-                type="number"
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v) => `${v}m`}
-              />
-              <YAxis
-                type="category"
-                dataKey="name"
-                tick={{ fontSize: 11, fill: "#64748b" }}
-                tickLine={false}
-                axisLine={false}
-                width={90}
-              />
-              <ReTooltip
-                formatter={(v, _, props) => [fmtMinutes(v), props.payload.email]}
-                contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }}
-              />
-              <Bar dataKey="minutes" radius={[0, 4, 4, 0]}>
-                {topStudents.map((_, i) => (
-                  <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* ── All students table with expandable daily chart ── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-800">Student Activity</h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Click any row to see their 30-day activity chart
-            </p>
-          </div>
-          <span className="text-xs text-slate-400">{tableData.length} students</span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Email</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Branch</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Total Time</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Last Active</th>
-                <th className="px-4 py-3 w-8" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {tableData.map((s, i) => {
-                const isExpanded = expandedUid === s.uid;
-                const isToday = isActiveToday(s.lastSeen);
-                return (
-                  <>
-                    <tr
-                      key={s.uid}
-                      onClick={() => setExpandedUid(isExpanded ? null : s.uid)}
-                      className="hover:bg-slate-50 cursor-pointer transition"
-                    >
-                      <td className="px-4 py-3 text-xs font-mono text-slate-400">{i + 1}</td>
-                      <td className="px-4 py-3 text-slate-700 font-medium truncate max-w-[200px]">
-                        {s.email ?? "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        {s.branch ? (
-                          <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
-                            {s.branch}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-slate-800">
-                        {fmtMinutes(s.totalMinutes ?? 0)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          {isToday && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
-                          )}
-                          <span className={cn("text-xs", isToday ? "text-green-600 font-medium" : "text-slate-400")}>
-                            {fmtDate(s.lastSeen)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-400">
-                        {isExpanded
-                          ? <ChevronUp className="h-4 w-4" />
-                          : <ChevronDown className="h-4 w-4" />
-                        }
-                      </td>
-                    </tr>
-
-                    {/* Expandable daily chart */}
-                    {isExpanded && (
-                      <tr key={`${s.uid}-detail`} className="bg-slate-50">
-                        <td colSpan={6} className="px-6 pt-3 pb-5">
-                          <p className="text-xs font-semibold text-slate-600 mb-3">
-                            {s.email} — daily activity (last 30 days)
-                          </p>
-                          <StudentDailyChart uid={s.uid} />
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                );
-              })}
-            </tbody>
-          </table>
         </div>
       </div>
 

@@ -12,6 +12,8 @@ import {
   Upload,
   Loader2,
   ExternalLink,
+  FileQuestion,
+  Trophy,
 } from "lucide-react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -24,23 +26,28 @@ import StudentList from "../../components/admin/StudentList";
 import ExcelUpload from "../../components/admin/ExcelUpload";
 import StatsPanel from "../../components/admin/StatsPanel";
 import LLMConfig from "../../components/admin/LLMConfig";
+import QuestionsManager from "../../components/admin/QuestionsManager";
+import LeaderboardPanel from "../../components/admin/LeaderboardPanel";
 import { cn } from "../../components/ui/utils";
 
 const TABS = [
+  { id: "questions", label: "Questions",  icon: FileQuestion },
   { id: "companies", label: "Companies",  icon: Building2 },
   { id: "roles",     label: "Roles",      icon: Briefcase },
   { id: "branches",  label: "Branches",   icon: GraduationCap },
-  { id: "students",  label: "Students",   icon: Users },
-  { id: "stats",     label: "Statistics", icon: BarChart2 },
+  { id: "students",    label: "Students",    icon: Users },
+  { id: "leaderboard", label: "Leaderboard", icon: Trophy },
+  { id: "stats",       label: "Statistics",  icon: BarChart2 },
   { id: "config",    label: "Config",     icon: Settings2 },
 ];
 
 export default function AdminDashboard() {
   const { user, signOut } = useAuth();
-  const [tab, setTab] = useState("companies");
+  const [tab, setTab] = useState("questions");
   const [companies, setCompanies] = useState([]);
   const [roles, setRoles] = useState([]);
   const [branches, setBranches] = useState([]);
+  const [questions, setQuestions] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
   const [studentRefreshKey, setStudentRefreshKey] = useState(0);
@@ -48,10 +55,11 @@ export default function AdminDashboard() {
   const loadAll = async () => {
     setLoadingData(true);
     try {
-      const [companiesSnap, rolesSnap, branchesSnap] = await Promise.all([
+      const [companiesSnap, rolesSnap, branchesSnap, questionsSnap] = await Promise.all([
         getDocs(collection(db, "companies")),
         getDocs(collection(db, "roles")),
         getDocs(collection(db, "branches")),
+        getDocs(collection(db, "questions")),
       ]);
       setCompanies(
         companiesSnap.docs
@@ -67,6 +75,9 @@ export default function AdminDashboard() {
         branchesSnap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => a.name.localeCompare(b.name))
+      );
+      setQuestions(
+        questionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
       );
     } catch (err) {
       toast.error("Failed to load data: " + err.message);
@@ -133,7 +144,7 @@ export default function AdminDashboard() {
             Placement Admin Dashboard
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Manage companies, roles, and student records.
+            Manage companies, roles, question sets, and student records.
           </p>
 
           {/* Stats + Form link */}
@@ -154,6 +165,11 @@ export default function AdminDashboard() {
                 <span className="text-sm font-semibold text-green-700">{branches.length}</span>
                 <span className="text-xs text-green-500">Branches</span>
               </div>
+              <div className="flex items-center gap-2 rounded-lg bg-violet-50 border border-violet-100 px-3.5 py-2">
+                <FileQuestion className="h-3.5 w-3.5 text-violet-600" />
+                <span className="text-sm font-semibold text-violet-700">{questions.length}</span>
+                <span className="text-xs text-violet-500">Question Sets</span>
+              </div>
               <a
                 href="/form"
                 target="_blank"
@@ -171,7 +187,7 @@ export default function AdminDashboard() {
       {/* Main */}
       <main className="flex-1 mx-auto w-full max-w-6xl px-6 py-8">
         {/* Tab bar */}
-        <div className="flex gap-1 p-1 bg-white rounded-xl border border-slate-200 shadow-sm mb-6">
+        <div className="flex gap-1 p-1 bg-white rounded-xl border border-slate-200 shadow-sm mb-6 overflow-x-auto">
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
@@ -180,7 +196,7 @@ export default function AdminDashboard() {
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  "flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all",
+                  "flex shrink-0 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all",
                   active
                     ? "bg-blue-600 text-white shadow-sm"
                     : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
@@ -202,8 +218,17 @@ export default function AdminDashboard() {
             </div>
           ) : (
             <>
+              {tab === "questions" && (
+                <QuestionsManager
+                  questions={questions}
+                  companies={companies}
+                  roles={roles}
+                  branches={branches}
+                  onRefresh={loadAll}
+                />
+              )}
               {tab === "companies" && (
-                <CompanyManager companies={companies} onRefresh={loadAll} />
+                <CompanyManager companies={companies} roles={roles} onRefresh={loadAll} />
               )}
               {tab === "roles" && (
                 <RoleManager roles={roles} onRefresh={loadAll} />
@@ -223,6 +248,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
+              {tab === "leaderboard" && <LeaderboardPanel />}
               {tab === "stats"  && <StatsPanel />}
               {tab === "config" && <LLMConfig />}
             </>

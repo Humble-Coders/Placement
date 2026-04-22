@@ -1,39 +1,7 @@
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../firebase";
-
-let _cache = null;
-
-export function clearCache() {
-  _cache = null;
-}
-
-export async function fetchAllData() {
-  if (_cache) return _cache;
-
-  const [questionsSnap, companiesSnap, rolesSnap, branchesSnap] =
-    await Promise.all([
-      getDocs(collection(db, "questions")),
-      getDocs(collection(db, "companies")),
-      getDocs(collection(db, "roles")),
-      getDocs(collection(db, "branches")),
-    ]);
-
-  const questions = questionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  const companies = companiesSnap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const roles = rolesSnap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const branches = branchesSnap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  _cache = { questions, companies, roles, branches };
-  return _cache;
-}
-
-// Search helpers — all local filtering after initial fetch
+// ─── Client-side filter helpers ──────────────────────────────────────────────
+//
+// All data is held in the DataContext (real-time listeners). These pure
+// functions filter the already-loaded arrays — no Firestore calls here.
 
 export function getQuestionsByCompany(questions, companyId) {
   return questions.filter((q) => q.company_id === companyId);
@@ -46,8 +14,12 @@ export function getQuestionsByRole(questions, roleId) {
 export function getQuestionsByBranch(questions, branchName) {
   const lower = branchName.toLowerCase();
   return questions.filter((q) => {
-    const inBranches = Array.isArray(q.branches) && q.branches.some((b) => b.toLowerCase() === lower);
-    const inOfficialBranches = Array.isArray(q.official_branches) && q.official_branches.some((b) => b.toLowerCase() === lower);
+    const inBranches =
+      Array.isArray(q.branches) &&
+      q.branches.some((b) => b.toLowerCase() === lower);
+    const inOfficialBranches =
+      Array.isArray(q.official_branches) &&
+      q.official_branches.some((b) => b.toLowerCase() === lower);
     return inBranches || inOfficialBranches;
   });
 }

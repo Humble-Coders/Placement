@@ -1,5 +1,6 @@
 import { Toaster } from "sonner";
 import { useAuth } from "./context/AuthContext";
+import { DataProvider } from "./context/DataContext";
 import AuthPage from "./pages/AuthPage";
 import Home from "./pages/Home";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -35,7 +36,9 @@ function AppRoutes() {
   // Admins are trusted accounts created manually — skip verification gate.
   if (!user.emailVerified && role !== "admin") return <EmailVerificationPage />;
   if (role === "admin") return <AdminDashboard />;
-  return <Home />;
+  // DataProvider starts the four onSnapshot listeners exactly once here —
+  // when the student portal mounts — and tears them down on sign-out.
+  return <DataProvider><Home /></DataProvider>;
 }
 
 function App() {

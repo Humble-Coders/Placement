@@ -10,9 +10,8 @@ import {
 } from "firebase/auth";
 import {
   doc,
-  getDoc,
   setDoc,
-  updateDoc,
+  runTransaction,
   serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
@@ -22,7 +21,6 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
-  // If Firebase Auth is not configured, skip the loading phase
   const [loading, setLoading] = useState(() => Boolean(auth));
 
   useEffect(() => {
@@ -32,16 +30,22 @@ export function AuthProvider({ children }) {
       if (firebaseUser) {
         try {
           const userDocRef = doc(db, "users", firebaseUser.uid);
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setRole(userData.role ?? "student");
-            await updateDoc(userDocRef, { lastLogin: serverTimestamp() });
-          } else {
-            // Shouldn't happen for normal flow but handle gracefully
-            setRole("student");
-          }
+          // Atomic read + lastLogin update: ensures we never read stale role
+          // while simultaneously writing, and the write only happens if the
+          // document still exists at commit time.
+          let resolvedRole = "student";
+          await runTransaction(db, async (txn) => {
+            const snap = await txn.get(userDocRef);
+            if (snap.exists()) {
+              resolvedRole = snap.data().role ?? "student";
+              txn.update(userDocRef, { lastLogin: serverTimestamp() });
+            }
+            // If the doc doesn't exist (shouldn't happen in normal flow),
+            // we leave resolvedRole as "student" and make no write.
+          });
+          setRole(resolvedRole);
         } catch {
+          // Gracefully degrade: still allow login, default to student role.
           setRole("student");
         }
         setUser(firebaseUser);
@@ -63,36 +67,52 @@ export function AuthProvider({ children }) {
     return signInWithEmailAndPassword(auth, email, password);
   };
 
+  // Sign-up is a two-step operation across two separate systems (Firebase Auth
+  // and Firestore) so it cannot be wrapped in a single Firestore transaction.
+  // Instead we use a compensating rollback: if the Firestore write fails after
+  // Auth account creation, we immediately delete the orphaned Auth user so
+  // the email address can be reused and no ghost account is left behind.
   const signUp = async (email, password) => {
     if (!auth) throw new Error("Firebase Auth is not configured.");
     if (!email.toLowerCase().endsWith("@thapar.edu")) {
       throw new Error("Only @thapar.edu email addresses are allowed.");
     }
+
     const credential = await createUserWithEmailAndPassword(auth, email, password);
-    // Send verification email before writing Firestore doc so the user
-    // cannot access the portal until they click the link.
-    await sendEmailVerification(credential.user);
-    await setDoc(doc(db, "users", credential.user.uid), {
-      email: email.toLowerCase(),
-      role: "student",
-      createdAt: serverTimestamp(),
-      lastLogin: serverTimestamp(),
-    });
+
+    try {
+      // Send verification email before the Firestore write so the user
+      // cannot reach the portal until they click the link.
+      await sendEmailVerification(credential.user);
+
+      await setDoc(doc(db, "users", credential.user.uid), {
+        email: email.toLowerCase(),
+        role: "student",
+        createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp(),
+      });
+    } catch (err) {
+      // Compensating rollback: delete the Auth user so the email is free again
+      // and no inconsistency (Auth user without Firestore profile) persists.
+      try {
+        await credential.user.delete();
+      } catch {
+        // Best-effort cleanup — ignore secondary failure.
+      }
+      throw err;
+    }
+
     return credential;
   };
 
-  // Re-send the verification email to the currently signed-in user.
   const resendVerification = async () => {
     if (!auth?.currentUser) throw new Error("No signed-in user.");
     await sendEmailVerification(auth.currentUser);
   };
 
-  // Force-refresh the Firebase Auth token so emailVerified is up to date,
-  // then re-trigger onAuthStateChanged by reloading the user object.
   const reloadUser = async () => {
     if (!auth?.currentUser) return;
     await reload(auth.currentUser);
-    // Manually push the refreshed user so React re-renders immediately.
     setUser({ ...auth.currentUser });
   };
 

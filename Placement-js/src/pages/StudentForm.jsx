@@ -194,9 +194,12 @@ const INITIAL_HR = [""];
 export default function StudentForm() {
   // Options loaded from Firestore
   const [companies, setCompanies] = useState([]);
-  const [roles, setRoles] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loadingOptions, setLoadingOptions] = useState(true);
+
+  // Role buckets for selected company
+  const [roleBuckets, setRoleBuckets] = useState([]);
+  const [loadingBuckets, setLoadingBuckets] = useState(false);
 
   // Form state
   const [email, setEmail] = useState("");
@@ -205,6 +208,7 @@ export default function StudentForm() {
   const [branch, setBranch] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [roleId, setRoleId] = useState("");
+  const [officialRole, setOfficialRole] = useState("");
   const [techQuestions, setTechQuestions] = useState(INITIAL_TECH);
   const [hrQuestions, setHrQuestions] = useState(INITIAL_HR);
   const [topics, setTopics] = useState([]);
@@ -224,15 +228,11 @@ export default function StudentForm() {
   useEffect(() => {
     Promise.all([
       getDocs(collection(db, "companies")),
-      getDocs(collection(db, "roles")),
       getDocs(collection(db, "branches")),
     ])
-      .then(([cSnap, rSnap, bSnap]) => {
+      .then(([cSnap, bSnap]) => {
         setCompanies(
           cSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name))
-        );
-        setRoles(
-          rSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name))
         );
         setBranches(
           bSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name))
@@ -241,6 +241,29 @@ export default function StudentForm() {
       .catch(() => {})
       .finally(() => setLoadingOptions(false));
   }, []);
+
+  // Load role buckets when company changes
+  useEffect(() => {
+    if (!companyId) {
+      setRoleBuckets([]);
+      setRoleId("");
+      setOfficialRole("");
+      return;
+    }
+    setLoadingBuckets(true);
+    setRoleId("");
+    setOfficialRole("");
+    getDocs(collection(db, "companies", companyId, "role_buckets"))
+      .then((snap) => {
+        setRoleBuckets(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => a.role_name.localeCompare(b.role_name))
+        );
+      })
+      .catch(() => setRoleBuckets([]))
+      .finally(() => setLoadingBuckets(false));
+  }, [companyId]);
 
   // Email autofill lookup
   const handleEmailBlur = async () => {
@@ -319,7 +342,7 @@ export default function StudentForm() {
 
     const emailLower       = email.trim().toLowerCase();
     const selectedCompany  = companies.find((c) => c.id === companyId);
-    const selectedRole     = roles.find((r) => r.id === roleId);
+    const selectedBucket   = roleBuckets.find((b) => b.role_id === roleId);
     const selectedBranch   = branches.find((b) => b.id === branch);
 
     // Deterministic lock key: prevents duplicate submissions for the same
@@ -339,7 +362,8 @@ export default function StudentForm() {
       company_id:          companyId,
       company_name:        selectedCompany?.name ?? "",
       role_id:             roleId,
-      role_name:           selectedRole?.name ?? "",
+      role_name:           selectedBucket?.role_name ?? "",
+      official_role:       officialRole || "",
       technical_questions: techQuestions.map((q) => q.trim()).filter(Boolean),
       hr_questions:        hrQuestions.map((q) => q.trim()).filter(Boolean),
       topics:              [...new Set(topics)],
@@ -366,7 +390,7 @@ export default function StudentForm() {
               if (hoursElapsed < 24) {
                 const dup = new Error(
                   `You already submitted for ${selectedCompany?.name ?? "this company"} ` +
-                  `(${selectedRole?.name ?? "this role"}) ${Math.round(hoursElapsed)}h ago. ` +
+                  `(${selectedBucket?.role_name ?? "this role"}) ${Math.round(hoursElapsed)}h ago. ` +
                   `Please wait 24 hours before resubmitting.`
                 );
                 dup.isDuplicate = true;
@@ -443,7 +467,8 @@ export default function StudentForm() {
 
   const resetForm = () => {
     setEmail(""); setName(""); setRoll(""); setBranch("");
-    setCompanyId(""); setRoleId("");
+    setCompanyId(""); setRoleId(""); setOfficialRole("");
+    setRoleBuckets([]);
     setTechQuestions(INITIAL_TECH); setHrQuestions(INITIAL_HR);
     setTopics([]); setErrors({}); setSubmitted(false);
     setProfileFound(false); setProfileChecked(false);
@@ -665,22 +690,54 @@ export default function StudentForm() {
 
               <div id="field-role">
                 <Field label="Role" required error={errors.role}>
-                  {loadingOptions ? (
+                  {loadingOptions || loadingBuckets ? (
                     <div className="flex items-center gap-2 h-10 text-sm text-slate-400">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {loadingBuckets ? "Loading roles…" : "Loading…"}
+                    </div>
+                  ) : !companyId ? (
+                    <div className="flex items-center h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-400">
+                      Select a company first
+                    </div>
+                  ) : roleBuckets.length === 0 ? (
+                    <div className="flex items-center h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-400">
+                      No roles configured for this company
                     </div>
                   ) : (
                     <SearchableSelect
-                      options={roles}
+                      options={roleBuckets.map((b) => ({ id: b.role_id, name: b.role_name }))}
                       value={roleId}
-                      onChange={(id) => setRoleId(id)}
-                      placeholder="Search role…"
+                      onChange={(id) => {
+                        setRoleId(id);
+                        setOfficialRole("");
+                      }}
+                      placeholder="Select role…"
                       error={!!errors.role}
                     />
                   )}
                 </Field>
               </div>
             </div>
+
+            {/* Official Role — shown when selected bucket has official roles */}
+            {(() => {
+              const selectedBucket = roleBuckets.find((b) => b.role_id === roleId);
+              if (!selectedBucket || !selectedBucket.official_roles?.length) return null;
+              return (
+                <Field label="Official Role" hint="Select the specific role you applied for.">
+                  <select
+                    value={officialRole}
+                    onChange={(e) => setOfficialRole(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white py-2.5 px-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">Select official role (optional)…</option>
+                    {selectedBucket.official_roles.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </Field>
+              );
+            })()}
           </section>
 
           {/* ── Section 3: Technical Questions ── */}

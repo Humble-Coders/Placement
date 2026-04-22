@@ -1,11 +1,14 @@
 import { useRef, useState } from "react";
 import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, X } from "lucide-react";
 import * as XLSX from "xlsx";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "../../firebase";
 import { toast } from "sonner";
 
 const REQUIRED_COLUMNS = ["name", "roll", "email", "branch"];
+
+// Firestore writeBatch is capped at 500 operations per batch.
+const BATCH_SIZE = 500;
 
 function sanitizeEmail(email) {
   return email.toLowerCase().replace(/[.#$[\]]/g, "_");
@@ -24,7 +27,7 @@ function parseRows(sheet) {
 
 export default function ExcelUpload({ onUploaded }) {
   const inputRef = useRef(null);
-  const [preview, setPreview] = useState(null); // { rows, errors }
+  const [preview, setPreview] = useState(null); // { rows, errors, total }
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -66,26 +69,41 @@ export default function ExcelUpload({ onUploaded }) {
     if (file) handleFile(file);
   };
 
+  // Atomic upload using writeBatch.
+  // Each batch holds up to BATCH_SIZE (500) writes — Firestore's hard limit.
+  // All writes within a single batch are atomic (all succeed or all fail).
+  // If the dataset spans multiple batches, each batch is committed sequentially
+  // so a failure in a later batch may leave earlier batches already committed.
+  // For typical upload sizes (<500 rows) this is fully atomic in one shot.
   const handleUpload = async () => {
     if (!preview || preview.rows.length === 0) return;
     setUploading(true);
     try {
-      const writes = preview.rows.map((row) => {
-        const docId = sanitizeEmail(row.email);
-        return setDoc(
-          doc(db, "students", docId),
-          {
-            name: row.name,
-            roll: row.roll,
-            email: row.email.toLowerCase(),
-            branch: row.branch,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      });
-      await Promise.all(writes);
-      toast.success(`${preview.rows.length} student records saved.`);
+      const rows = preview.rows;
+
+      for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+        const chunk = rows.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+
+        chunk.forEach((row) => {
+          const docId = sanitizeEmail(row.email);
+          batch.set(
+            doc(db, "students", docId),
+            {
+              name: row.name,
+              roll: row.roll,
+              email: row.email.toLowerCase(),
+              branch: row.branch,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        });
+
+        await batch.commit();
+      }
+
+      toast.success(`${rows.length} student records saved.`);
       setDone(true);
       setPreview(null);
       if (inputRef.current) inputRef.current.value = "";

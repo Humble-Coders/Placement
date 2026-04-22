@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   Plus,
@@ -8,6 +8,8 @@ import {
   Loader2,
   ChevronLeft,
   Tag,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import {
   collection,
@@ -46,8 +48,23 @@ function Field({ label, required, error, hint, children }) {
   );
 }
 
-// Dynamic list of text inputs (questions)
+// Native speech recognition — works on Chrome, Edge, Safari (iOS 14.5+), Android Chrome.
+// Returns null when the browser doesn't support it.
+const getSR = () =>
+  typeof window !== "undefined"
+    ? window.SpeechRecognition || window.webkitSpeechRecognition || null
+    : null;
+
+// Dynamic list of text inputs (questions) with optional mic-to-speak per item.
 function QuestionList({ items, onChange, placeholder, minCount, error }) {
+  const [listeningIdx, setListeningIdx] = useState(null);
+  const recognitionRef = useRef(null);
+  const baseTextRef = useRef(""); // text present before speech started for current item
+  const SR = getSR();
+
+  // Stop recognition and clean up on unmount.
+  useEffect(() => () => recognitionRef.current?.abort(), []);
+
   const addItem = () => onChange([...items, ""]);
   const updateItem = (i, val) => {
     const next = [...items];
@@ -56,37 +73,125 @@ function QuestionList({ items, onChange, placeholder, minCount, error }) {
   };
   const removeItem = (i) => onChange(items.filter((_, idx) => idx !== i));
 
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setListeningIdx(null);
+  }, []);
+
+  const startListening = useCallback(
+    (i) => {
+      // If already listening to another field, stop it first.
+      if (listeningIdx !== null) stopListening();
+
+      const SpeechRecognition = getSR();
+      if (!SpeechRecognition) return;
+
+      baseTextRef.current = items[i]; // capture existing text as base
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;   // keep listening until the user stops
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (e) => {
+        let final = "";
+        let interim = "";
+        for (let j = 0; j < e.results.length; j++) {
+          if (e.results[j].isFinal) final += e.results[j][0].transcript + " ";
+          else interim += e.results[j][0].transcript;
+        }
+        const base = baseTextRef.current.trim();
+        const spoken = (final + interim).trim();
+        const next = [...items];
+        next[i] = base ? `${base} ${spoken}` : spoken;
+        onChange(next);
+      };
+
+      recognition.onend = () => {
+        // Trim the final value and update base so future presses append correctly.
+        setListeningIdx((prev) => {
+          if (prev === i) {
+            // Finalize: trim trailing space left by interim result
+            const next = [...items];
+            next[i] = (next[i] ?? "").trimEnd();
+            onChange(next);
+          }
+          return null;
+        });
+        recognitionRef.current = null;
+      };
+
+      recognition.onerror = (e) => {
+        if (e.error !== "aborted" && e.error !== "no-speech") {
+          console.warn("Speech recognition error:", e.error);
+        }
+        setListeningIdx(null);
+        recognitionRef.current = null;
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+      setListeningIdx(i);
+    },
+    [items, listeningIdx, onChange, stopListening]
+  );
+
   return (
     <div className="space-y-2">
-      {items.map((q, i) => (
-        <div key={i} className="flex gap-2 items-start">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-500 mt-2">
-            {i + 1}
-          </span>
-          <textarea
-            value={q}
-            onChange={(e) => updateItem(i, e.target.value)}
-            placeholder={placeholder}
-            rows={2}
-            className={cn(
-              "flex-1 resize-none rounded-lg border px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none transition",
-              "focus:border-blue-400 focus:ring-2 focus:ring-blue-100",
-              error && i < minCount && !q.trim()
-                ? "border-red-300"
-                : "border-slate-200"
+      {items.map((q, i) => {
+        const isListening = listeningIdx === i;
+        return (
+          <div key={i} className="flex gap-2 items-start">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-500 mt-2">
+              {i + 1}
+            </span>
+            <textarea
+              value={q}
+              onChange={(e) => updateItem(i, e.target.value)}
+              placeholder={isListening ? "Listening… speak now" : placeholder}
+              rows={2}
+              className={cn(
+                "flex-1 resize-none rounded-lg border px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none transition",
+                isListening
+                  ? "border-red-300 ring-2 ring-red-100 placeholder-red-300"
+                  : "focus:border-blue-400 focus:ring-2 focus:ring-blue-100",
+                error && i < minCount && !q.trim() && !isListening
+                  ? "border-red-300"
+                  : isListening ? "" : "border-slate-200"
+              )}
+            />
+            {/* Mic button — only rendered if browser supports speech API */}
+            {SR && (
+              <button
+                type="button"
+                onClick={() => isListening ? stopListening() : startListening(i)}
+                title={isListening ? "Stop recording" : "Speak to fill this question"}
+                className={cn(
+                  "mt-2 rounded-lg p-1.5 transition shrink-0",
+                  isListening
+                    ? "bg-red-50 text-red-500 hover:bg-red-100 animate-pulse"
+                    : "text-slate-400 hover:bg-blue-50 hover:text-blue-500"
+                )}
+              >
+                {isListening
+                  ? <MicOff className="h-4 w-4" />
+                  : <Mic className="h-4 w-4" />
+                }
+              </button>
             )}
-          />
-          {items.length > minCount && (
-            <button
-              type="button"
-              onClick={() => removeItem(i)}
-              className="mt-2 rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 transition"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      ))}
+            {items.length > minCount && (
+              <button
+                type="button"
+                onClick={() => { if (isListening) stopListening(); removeItem(i); }}
+                className="mt-2 rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        );
+      })}
       <button
         type="button"
         onClick={addItem}
@@ -740,12 +845,30 @@ export default function StudentForm() {
             })()}
           </section>
 
-          {/* ── Section 3: Technical Questions ── */}
+          {/* ── Section 3: Topics Covered ── */}
+          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Topics Covered</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Add topics / skills that were tested. At least <strong>1</strong> required.
+              </p>
+            </div>
+            <div id="field-topics">
+              <TopicInput topics={topics} onChange={setTopics} error={errors.topics} />
+            </div>
+          </section>
+
+          {/* ── Section 4: Technical Questions ── */}
           <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Technical Questions</h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 Share the technical questions you were asked. Minimum <strong>4</strong> required.
+                {getSR() && (
+                  <span className="ml-1.5 inline-flex items-center gap-1 text-blue-500">
+                    <Mic className="h-3 w-3" /> Tap the mic to speak.
+                  </span>
+                )}
               </p>
             </div>
             <div id="field-tech">
@@ -759,12 +882,17 @@ export default function StudentForm() {
             </div>
           </section>
 
-          {/* ── Section 4: HR Questions ── */}
+          {/* ── Section 5: HR Questions ── */}
           <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
             <div>
               <h2 className="text-base font-semibold text-slate-900">HR Questions</h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 Share HR / behavioural questions you were asked. Minimum <strong>1</strong> required.
+                {getSR() && (
+                  <span className="ml-1.5 inline-flex items-center gap-1 text-blue-500">
+                    <Mic className="h-3 w-3" /> Tap the mic to speak.
+                  </span>
+                )}
               </p>
             </div>
             <div id="field-hr">
@@ -775,19 +903,6 @@ export default function StudentForm() {
                 minCount={1}
                 error={errors.hr}
               />
-            </div>
-          </section>
-
-          {/* ── Section 5: Topics ── */}
-          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">Topics Covered</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Add topics / skills that were tested. At least <strong>1</strong> required.
-              </p>
-            </div>
-            <div id="field-topics">
-              <TopicInput topics={topics} onChange={setTopics} error={errors.topics} />
             </div>
           </section>
 

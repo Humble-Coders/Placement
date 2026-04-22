@@ -75,6 +75,15 @@ service cloud.firestore {
     match /companies/{id} {
       allow read:  if true;
       allow write: if isAdmin();
+
+      // ── /companies/{id}/role_buckets/{bucketId} ─────────────────────────────
+      // Public read: student form fetches role buckets (unauthenticated).
+      // Admin write: only admins add/edit/delete buckets and official roles.
+
+      match /role_buckets/{bucketId} {
+        allow read:  if true;
+        allow write: if isAdmin();
+      }
     }
 
     // ── /roles/{id} ──────────────────────────────────────────────────────────
